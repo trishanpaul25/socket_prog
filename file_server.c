@@ -8,10 +8,11 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE 4096
+#define CMD_SIZE 512
 
 int main() {
     struct sockaddr_in serv_addr, cli_addr;
-    unsigned short port = 9000;
+    unsigned short port = 8000;
     char ip[] = "127.0.0.1";
 
     bzero(&serv_addr, sizeof(serv_addr));
@@ -24,6 +25,7 @@ int main() {
         printf("Cannot create socket\n");
         exit(1);
     }
+
 
     int bind_status = bind(serv_socket, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     if (bind_status < 0) {
@@ -40,13 +42,6 @@ int main() {
     }
 
     socklen_t cli_addr_len = sizeof(cli_addr);
-    
-    FILE *log_file = fopen("command_outputs.txt", "a");
-    if (log_file == NULL) {
-        printf("Failed to open or create output log file.\n");
-        close(serv_socket);
-        exit(1);
-    }
 
     while (1) {
         printf("\n[Server] Waiting for a client to connect...\n");
@@ -58,9 +53,9 @@ int main() {
         }
         printf("[Server] Connected to client: %s\n", inet_ntoa(cli_addr.sin_addr));
 
-        // Infinite loop for the CURRENT active client session
         while (1) {
-            char cmd_buff[256];
+            // FIXED: Declared as an array to hold the incoming command string safely
+            char cmd_buff[CMD_SIZE];
             bzero(cmd_buff, sizeof(cmd_buff));
             
             int r = recv(cli_socket, cmd_buff, sizeof(cmd_buff) - 1, 0);
@@ -69,16 +64,13 @@ int main() {
                 break;
             }
             
-            // Remove trailing newlines and carriage returns
             cmd_buff[strcspn(cmd_buff, "\r\n")] = '\0';
 
-            // Check if the client requested an exit session
             if (strcmp(cmd_buff, "exit") == 0) {
                 printf("[Server] Client requested termination ('exit'). Closing session.\n");
                 break;
             }
 
-            // Skip execution if client accidentally sends an empty string
             if (strlen(cmd_buff) == 0) {
                 send(cli_socket, "\n", 1, 0);
                 continue;
@@ -93,6 +85,7 @@ int main() {
             if (fp == NULL) {
                 strcpy(result_buff, "Error: Failed to execute command on server.\n");
             } else {
+                // FIXED: Declared as an array to read shell output line-by-line
                 char path[256];
                 while (fgets(path, sizeof(path), fp) != NULL) {
                     if (strlen(result_buff) + strlen(path) < BUFFER_SIZE - 1) {
@@ -109,13 +102,18 @@ int main() {
             // Print output locally on server side
             printf("--- Command Output Begin ---\n%s----------------------------\n", result_buff);
 
-            // Log command and output to text track file
-            fprintf(log_file, "Command: %s\n", cmd_buff);
-            fprintf(log_file, "Output:\n%s", result_buff);
-            fprintf(log_file, "--------------------------------------------------------\n");
-            fflush(log_file); 
+            // Open file in "w" mode to overwrite it every single time a new command runs
+            FILE *log_file = fopen("command_outputs.txt", "w");
+            if (log_file != NULL) {
+                fprintf(log_file, "Command: %s\n", cmd_buff);
+                fprintf(log_file, "Output:\n%s", result_buff);
+                fclose(log_file);
+                printf("[Server] Successfully saved latest output to 'command_outputs.txt'\n");
+            } else {
+                printf("[Server] Warning: Could not open log file to save output.\n");
+            }
 
-            // Send full output block back to client
+            // Send output back to client
             int w = send(cli_socket, result_buff, strlen(result_buff), 0);
             if (w < 0) {
                 printf("Cannot send data back to client\n");
@@ -126,7 +124,6 @@ int main() {
         printf("[Server] Session ended. Cleaning up resources.\n");
     }
     
-    fclose(log_file);
     close(serv_socket);
     return 0;
 }
