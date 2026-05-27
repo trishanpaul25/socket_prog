@@ -8,9 +8,10 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE 4096
+#define CMD_SIZE 512
 
 int main() {
-    unsigned short port = 9000;
+    unsigned short port = 8000;
     char ip[] = "127.0.0.1";
 
     struct sockaddr_in serv_addr_config;
@@ -35,36 +36,33 @@ int main() {
     printf("Successfully connected to the Remote Shell Server.\n");
     printf("Type your Unix commands below. Type 'exit' to quit.\n\n");
 
-    // Infinite loop for continuous interactive command inputs
     while (1) {
-        char cmd_input[256];
-        printf("input : ");
+        // FIXED: Declared as arrays for user input strings
+        char cmd_input[CMD_SIZE];
+        char clean_cmd[CMD_SIZE];
+        
+        printf("Remote-Shell$ ");
         
         if (fgets(cmd_input, sizeof(cmd_input), stdin) == NULL) {
             printf("\nError reading input.\n");
             break;
         }
 
-        // Clean trailing newlines for structural safety checks
-        char clean_cmd[256];
         strcpy(clean_cmd, cmd_input);
         clean_cmd[strcspn(clean_cmd, "\r\n")] = '\0';
 
-        // Check if the user wants to leave before sending data
         if (strcmp(clean_cmd, "exit") == 0) {
-            send(cli_socket, "exit", 4, 0); // Inform server we are leaving
+            send(cli_socket, "exit", 4, 0);
             printf("Exiting client interface. Goodbye!\n");
             break;
         }
 
-        // Forward the command to the server
         int w = send(cli_socket, cmd_input, strlen(cmd_input), 0);
         if (w < 0) {
             printf("Connection dropped. Cannot send command to server.\n");
             break;
         }
 
-        // Catch execution outputs from server
         char response_buff[BUFFER_SIZE];
         bzero(response_buff, sizeof(response_buff));
         
@@ -74,7 +72,6 @@ int main() {
             break;
         }
         
-        // Print the output locally on client screen
         printf("%s\n", response_buff);
     }
 
