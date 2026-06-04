@@ -8,8 +8,8 @@
 #include<arpa/inet.h>
 #include<math.h>
 
-int solve(char s[]){
-
+// Clean, pointer-safe BODMAS evaluation function
+int solve(char *s){
     while(s[0] == '(' && s[strlen(s) - 1] == ')'){
         int bracket_count = 0, balance = 1;
         for(int i = 1; i < strlen(s) - 1; i++){
@@ -27,10 +27,10 @@ int solve(char s[]){
 
     int bracket_count = 0, target_pos = -1;
     char target_op = '\0';
-
     char pri[] = {'+','-','*','/'};
 
     for(int p = 0; p < 4; p++){
+        bracket_count = 0; 
         for(int i = strlen(s) - 1; i >= 0; i--){
             if(s[i] == ')') bracket_count++;
             else if(s[i] == '(') bracket_count--;
@@ -45,15 +45,20 @@ int solve(char s[]){
 
     if(target_op){
         s[target_pos] = '\0';
+        char *right_side = &s[target_pos + 1];
         int left = solve(s);
-        int right = solve(&s[target_pos+1]);
+        int right = solve(right_side);
+        
         if(target_op == '+') return left+right;
         if(target_op == '-') return left-right;
         if(target_op == '*') return left*right;
-        if(target_op == '/') if(right!=0) return left/right;
+        if(target_op == '/') {
+            if(right != 0) return left/right;
+            else return 0;
+        }
     }
 
-    return atof(s);
+    return atoi(s);
 }
 
 int main(){
@@ -83,7 +88,7 @@ int main(){
         printf("Client connected: %s\n", inet_ntoa(cli_addr.sin_addr));
 
         int choice;
-        char buffer[1024], response[1024];
+        char buffer[1024], response[2048];
 
         while(1){
             if (recv(cli_sock, &choice, sizeof(choice), 0) <= 0) break;
@@ -92,11 +97,22 @@ int main(){
 
             bzero(buffer, sizeof(buffer));
             recv(cli_sock, buffer, sizeof(buffer), 0);
-            buffer[strcspn(buffer, "\n\r ")] = 0; // Strip newlines and spaces
+
+            // FIX: Safely remove newlines AND ALL spaces from the expression string
+            int count = 0;
+            char temp_clean[1024];
+            bzero(temp_clean, sizeof(temp_clean));
+            for (int i = 0; buffer[i] != '\0'; i++) {
+                if (buffer[i] != ' ' && buffer[i] != '\n' && buffer[i] != '\r') {
+                    temp_clean[count++] = buffer[i];
+                }
+            }
+            temp_clean[count] = '\0';
+            strcpy(buffer, temp_clean); // buffer now has NO broken cut-off regions
 
             bzero(response, sizeof(response));
 
-            if (choice == 1) { // Binary to Decimal
+            if (choice == 1) { 
                 long bin = atol(buffer);
                 int dec = 0, i = 0;
                 while (bin != 0) {
@@ -105,7 +121,7 @@ int main(){
                 }
                 sprintf(response, "Decimal: %d", dec);
             } 
-            else if (choice == 2) { // Decimal to Binary
+            else if (choice == 2) { 
                 int dec = atoi(buffer);
                 char temp[1024] = "";
                 if (dec == 0) strcpy(response, "Binary: 0");
@@ -114,21 +130,18 @@ int main(){
                         sprintf(temp + strlen(temp), "%d", dec % 2);
                         dec /= 2;
                     }
-                    // Reverse the string cleanly
                     int len = strlen(temp);
                     char reversed[1024] = "";
                     for(int j=0; j<len; j++) reversed[j] = temp[len-1-j];
                     sprintf(response, "Binary: %s", reversed);
                 }
             } 
-            else if (choice == 3) { // BODMAS with Brackets
+            else if (choice == 3) { 
                 int result = solve(buffer);
                 sprintf(response, "BODMAS result: %d", result);
             }
 
-            // Print output on Server Terminal
             printf("[Choice %d] Input: %s -> %s\n", choice, buffer, response);
-            // Send output to Client Terminal
             send(cli_sock, response, strlen(response), 0);
         }
         printf("Client disconnected.\n");
